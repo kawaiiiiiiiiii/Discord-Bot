@@ -1,0 +1,123 @@
+const { Client, GatewayIntentBits } = require('discord.js');
+const express = require('express');
+
+console.log('Le bot démarre...');
+
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ]
+});
+
+const lastMessageByChannel = new Map();
+
+client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
+
+    if (message.content.startsWith('/fds') || message.content.startsWith('/mym')) {
+        const args = message.content.split(' ');
+        const values = args.slice(1, 5).map(arg => parseFloat(arg));
+
+        if (values.some(isNaN) || values.length !== 4) {
+            return message.reply("Erreur : Veuillez entrer 4 nombres valides après la commande.");
+        }
+
+        const date = new Date().toLocaleDateString('fr-FR');
+        const isFds = message.content.startsWith('/fds');
+        const symbol = isFds ? '$' : '€';
+        const TAX_RATE = isFds ? 0.20 : 0;
+
+        const netAmounts = calculateNetAmounts(values, TAX_RATE);
+
+        const channels = {
+            "ANGIE": netAmounts[0],
+            "VANESSA": netAmounts[1],
+            "BLUE": netAmounts[2],
+            "ANGEL": netAmounts[3]
+        };
+
+        for (const [categoryName, value] of Object.entries(channels)) {
+            const channel = message.guild.channels.cache.find(
+                channel => channel.name === "💰-total-chatting" && channel.parent?.name === categoryName
+            );
+            if (channel) {
+                const messageContent = `${date} - ${message.author.username} : ${symbol}${value.toFixed(2)}`;
+                const lastMessage = lastMessageByChannel.get(channel.id);
+
+                if (lastMessage && lastMessage.content === messageContent) {
+                    console.log(`Message déjà envoyé pour ${categoryName}, ignoré.`);
+                } else {
+                    try {
+                        await channel.send(messageContent);
+                        lastMessageByChannel.set(channel.id, { content: messageContent, timestamp: Date.now() });
+                    } catch (error) {
+                        console.error(`Erreur lors de l'envoi du message pour ${categoryName}:`, error);
+                    }
+                }
+            }
+        }
+
+        const totalNet = netAmounts.reduce((acc, curr) => acc + curr, 0);
+
+        const bilanChannel = message.guild.channels.cache.find(
+            channel => channel.name === "bilan-chatting" && channel.parent?.name === "BILAN"
+        );
+
+        if (bilanChannel) {
+            const bilanContent = `${message.author.username} : ${isFds ? '$' : '€'}${totalNet.toFixed(2)}`;
+            const lastBilanMessage = lastMessageByChannel.get(bilanChannel.id);
+
+            if (lastBilanMessage && lastBilanMessage.content === bilanContent) {
+                console.log("Bilan déjà envoyé, ignoré.");
+            } else {
+                try {
+                    await bilanChannel.send(bilanContent);
+                    lastMessageByChannel.set(bilanChannel.id, { content: bilanContent, timestamp: Date.now() });
+                } catch (error) {
+                    console.error("Erreur lors de l'envoi du bilan:", error);
+                }
+            }
+        }
+
+        try {
+            await message.channel.send(`Montants ${isFds ? 'bruts' : 'nets'} traités et envoyés dans les canaux respectifs.`);
+        } catch (error) {
+            console.error("Erreur lors de l'envoi du message de confirmation:", error);
+        }
+    }
+});
+
+client.on('ready', () => {
+    console.log('Bot connecté et prêt !');
+});
+
+client.on('reconnecting', () => {
+    console.log('Tentative de reconnexion en cours...');
+});
+
+client.on('error', error => {
+    console.error('Une erreur est survenue:', error);
+});
+
+client.on('disconnect', () => {
+    console.log('Bot déconnecté. Tentative de reconnexion...');
+});
+
+process.on('unhandledRejection', error => {
+    console.error('Erreur non gérée:', error);
+});
+
+// Express server setup
+const app = express();
+
+app.get('/', (req, res) => {
+    res.send('Bot is running!');
+});
+
+app.listen(3000, () => {
+    console.log('Server is running on port 3000');
+});
+
+client.login('MTI5NzA1MDg1NDYyMDI2NjYxOA.GVKKUe.cCzgaZD5WwHqpGs7eUh9MtZV06Q7Ac6HK151Hc'); // Remplace par ton vrai token
